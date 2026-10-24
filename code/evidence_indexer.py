@@ -770,10 +770,62 @@ class EvidenceIndexer:
                 continue
 
             kv: dict[str, str] = {}
-            for m in re.finditer(r'(\w+)=([^\s"]+|"[^"]*")', line):
-                k = m.group(1)
-                v = m.group(2).strip('"')
-                kv[k] = v
+            # If line contains JSON payload (e.g. structured_service_events_*.log)
+            brace_idx = line.find("{")
+            if brace_idx != -1 and line.rstrip().endswith("}"):
+                try:
+                    raw_json = json.loads(line[brace_idx:])
+                    if isinstance(raw_json, dict):
+                        for k, v in raw_json.items():
+                            kv[k] = str(v)
+                except Exception:
+                    pass
+
+            if not kv:
+                # Key=value extraction
+                for m in re.finditer(r'(\w+)=([^\s"]+|"[^"]*")', line):
+                    k = m.group(1)
+                    v = m.group(2).strip('"')
+                    kv[k] = v
+
+                # Bracket tokens: [DEBUG] [account_service] [tr-6074163]
+                for b in re.findall(r'\[([^\]]+)\]', line):
+                    if b.startswith("tr-") or b.startswith("rb-"):
+                        kv["trace_id"] = b
+                    elif b.endswith("_service") or b in ("log_router", "analytics_platform", "support_platform"):
+                        kv["service"] = b
+
+                # Pipe tokens: | DEBUG | security_service | tr-5156005 | audit_record_read_completed |
+                if "|" in line:
+                    for p in [x.strip() for x in line.split("|")]:
+                        if p.startswith("tr-") or p.startswith("rb-"):
+                            kv["trace_id"] = p
+                        elif p.endswith("_service") or p in ("log_router", "analytics_platform", "support_platform"):
+                            kv["service"] = p
+                        elif p.endswith("_completed") or p.endswith("_started"):
+                            kv["event"] = p
+
+                # Syslog format: <14>1 node-4 account_service tr-3269055 ...
+                m_tr = re.search(r'\s(tr-\d+|rb-\d+[-\w]*)\s', line)
+                if m_tr and "trace_id" not in kv:
+                    kv["trace_id"] = m_tr.group(1)
+
+                m_req = re.search(r'requestId=(tr-[^\s"]+)', line)
+                if m_req and "trace_id" not in kv:
+                    kv["trace_id"] = m_req.group(1)
+
+                # Unescape inner message if present
+                if "message" in kv and "=" in kv["message"]:
+                    for m in re.finditer(r'(\w+)=([^\s"]+|"[^"]*")', kv["message"].replace('\\"', '"')):
+                        kv[m.group(1)] = m.group(2).strip('"')
+
+            # Extract timestamp from beginning of line or inside JSON/kv
+            line_ts = kv.get("timestamp") or kv.get("time") or kv.get("event_time")
+            if not line_ts:
+                m_ts = re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)', line)
+                if m_ts:
+                    line_ts = m_ts.group(1)
+            kv["_timestamp"] = line_ts or captured_at
 
             trace_id = kv.get("trace_id", "")
 
@@ -781,8 +833,8 @@ class EvidenceIndexer:
             line_ids: set[str] = set()
             for field in (
                 "lookup_key", "subject_key", "correlation_key", "matched_value",
-                "customer_reference", "subject_reference", "customer_email",
-                "requester_email", "email", "owner_email", "user_id"
+                "customer_reference", "subject_reference", "subject_ref",
+                "customer_email", "requester_email", "email", "owner_email", "user_id"
             ):
                 val = kv.get(field, "")
                 if val and val != "null":
@@ -822,6 +874,7 @@ class EvidenceIndexer:
             data_category = _SYSTEM_TO_CATEGORY.get(system_id, "USER_PROFILE")
             event = kv.get("event", "")
             state = self._state_from_log_event(event, kv, system_id)
+            line_cap = kv.get("_timestamp", captured_at)
 
             records.append(
                 ResourceRecord(
@@ -830,8 +883,8 @@ class EvidenceIndexer:
                     resource_id=resource_id,
                     data_category=data_category,
                     state=state,
-                    captured_at=captured_at,
-                    file_captured_at=captured_at,
+                    captured_at=line_cap,
+                    file_captured_at=line_cap,
                     identifiers=all_ids,
                     extra=kv,
                 )
@@ -856,9 +909,12 @@ class EvidenceIndexer:
                 return "DISABLED"
             return "ACTIVE"
 
-        if "restore_policy_read" in event or "backup_catalog_read" in event:
-            restore = kv.get("restore_allowed", "true").lower()
-            if restore in ("false", "0"):
+        if "restore_policy_read" in event or "backup_catalog_read" in event or "restore_candidate_evaluated" in event:
+            restore = kv.get("restore_allowed") or kv.get("eligible")
+            block = kv.get("deletion_block")
+            if block and block.lower() in ("true", "1"):
+                return "BLOCKED"
+            if restore and restore.lower() in ("false", "0"):
                 return "BLOCKED"
             return "ACTIVE"
 
