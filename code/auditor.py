@@ -34,6 +34,8 @@ _NON_DELETION_PATTERNS = [
         r"\bsubject\s*access\s*request\b",
         r"\bdata\s*access\s*request\b",
         r"\bsar\b",  # Subject Access Request abbreviation
+        r"\barticle\s*15\b",  # GDPR Right of Access
+        r"\b(provide|send|request)\s*(a\s*)?(complete\s*)?copy\s*of\b",
         r"\bwhat\s*data\s*(do\s*you\s*(hold|have)|you\s*have|have\s*you)\b",
         r"\bopt[\s-]?out\s*of\s*(marketing|email\s*marketing|newsletter)\b",
         r"\bdo\s*not\s*sell\s*my\b",
@@ -50,9 +52,8 @@ _DELETION_PATTERNS = [
         r"\berase(d|\b)",
         r"\berasing\b",
         r"\bremov(e|al|ed|ing)\b.*\b(account|data|profile|personal|record)\b",
-        r"\b(account|data|profile|personal)\b.*\bremov(e|al|ed|ing)\b",
-        r"\bclose\s*(my\s*)?account\b",
-        r"\bclosing\s*(my\s*)?account\b",
+        r"(?<!do\snot\swish\sto\s)(?<!not\s)(?<!never\s)\bclose\s*(my\s*)?account\b",
+        r"(?<!not\s)\bclosing\s*(my\s*)?account\b",
         r"\bdisconnect(ed)?\s*(my\s*)?account\b",
         r"\bwipe(d)?\b.*\b(data|account)\b",
         r"\bforget\s*me\b",
