@@ -11,8 +11,8 @@ The deletion-audit agent was evaluated against the official public ground truth 
 | **Case-Level Deletion-Status Accuracy** | **100.0%** | **32 / 32 cases correct** |
 | **False COMPLETE (Dangerous / Critical Risk)** | **0** | **0 / 32 (0.0%)** |
 | **False INCOMPLETE** | **0** | **0 / 32 (0.0%)** |
-| **Field-Level Step Accuracy** | **76.7%** | **598 / 780 fields matched** |
-| **Sequence Accuracy** | **18.8%** | **6 / 32 exact sequences** |
+| **Field-Level Step Accuracy** | **78.8%** | **630 / 800 fields matched** |
+| **Sequence Accuracy** | **25.0%** | **8 / 32 exact sequences** |
 
 ### Confusion Matrix
 
