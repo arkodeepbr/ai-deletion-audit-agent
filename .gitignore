@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+code/scratch_*.py
+sample_output_pred.csv
